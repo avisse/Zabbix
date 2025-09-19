@@ -1,0 +1,78 @@
+---
+- name: Déploiement Zabbix Server (Debian 12)
+  hosts: zabbix
+  become: true
+  vars:
+    zbx_db_pass: "{{ lookup('env','ZBX_DB_PASS') | default('ChangeMe123!', true) }}"
+  tasks:
+    - name: Paquets OS
+      apt:
+        name:
+          - apache2
+          - mariadb-server
+          - php
+          - php-mysql
+          - php-gd
+          - php-xml
+          - php-mbstring
+          - libapache2-mod-php
+          - unzip
+          - wget
+        update_cache: true
+        state: present
+
+    - name: Paquets Zabbix
+      apt:
+        name:
+          - zabbix-server-mysql
+          - zabbix-frontend-php
+          - zabbix-apache-conf
+          - zabbix-sql-scripts
+          - zabbix-agent
+        state: present
+
+    - name: Dépendances Python MySQL
+      apt:
+        name: python3-mysqldb
+        state: present
+
+    - name: Créer DB zabbix
+      community.mysql.mysql_db:
+        name: zabbix
+        encoding: utf8mb4
+        collation: utf8mb4_bin
+        state: present
+
+    - name: Créer utilisateur zabbix
+      community.mysql.mysql_user:
+        name: zabbix
+        host: localhost
+        password: "{{ zbx_db_pass }}"
+        priv: "zabbix.*:ALL"
+        state: present
+
+    - name: Importer schéma (idempotent)
+      command: bash -lc "zcat /usr/share/zabbix-sql-scripts/mysql/server.sql.gz | mysql -uzabbix -p'{{ zbx_db_pass }}' zabbix"
+      args:
+        creates: /var/lib/mysql/zabbix/acknowledges.ibd
+
+    - name: Config zabbix_server.conf
+      lineinfile:
+        path: /etc/zabbix/zabbix_server.conf
+        regexp: "^#?\s*{{ item.key }}=.*"
+        line: "{{ item.key }}={{ item.value }}"
+      with_items:
+        - { key: "DBName", value: "zabbix" }
+        - { key: "DBUser", value: "zabbix" }
+        - { key: "DBPassword", value: "{{ zbx_db_pass }}" }
+
+    - name: Services
+      systemd:
+        name: "{{ item }}"
+        state: restarted
+        enabled: true
+      loop:
+        - mariadb
+        - zabbix-server
+        - zabbix-agent
+        - apache2

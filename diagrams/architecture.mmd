@@ -1,0 +1,15 @@
+%% Mermaid — Architecture Zabbix ECF
+flowchart LR
+  subgraph VBox["VirtualBox network"]
+    Srv[Zabbix Server\nDebian 12\n192.168.100.10]
+    Lnx[Hôte Linux\n192.168.100.20]
+    Win[Hôte Windows 10\n192.168.100.15]
+  end
+
+  Srv <-- 10050/tcp (passif) --> Lnx
+  Srv <-- 10050/tcp (passif) --> Win
+  Lnx -- 10051/tcp (actif) --> Srv
+  Win -- 10051/tcp (actif) --> Srv
+
+  user((Browser)) -->|HTTP| Srv
+  Srv -.->|MariaDB local| DB[(zabbix)]
